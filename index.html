@@ -18,7 +18,6 @@
         h1 { margin-top: 0; }
         .visualizer {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
             gap: 10px;
             height: 120px;
             margin-bottom: 25px;
@@ -78,6 +77,9 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+        .radio-group { display: flex; justify-content: center; gap: 15px; margin-top: 5px; }
+        .radio-group label { display: flex; align-items: center; font-weight: normal; margin-bottom: 0; cursor: pointer; }
+        .radio-group input { margin-right: 8px; margin-top: 0; }
     </style>
 </head>
 <body>
@@ -94,12 +96,29 @@
         </div>
         
         <div class="control-group">
+            <label>시각화 표시 단위</label>
+            <div class="radio-group">
+                <label><input type="radio" name="vizMode" value="beat" checked> 박자 단위</label>
+                <label><input type="radio" name="vizMode" value="note"> 음표 단위</label>
+            </div>
+        </div>
+
+        <div class="control-group">
             <label for="subdivisionSelect">음표 단위 (소리)</label>
             <select id="subdivisionSelect">
                 <option value="4">4분 음표 (♩)</option>
                 <option value="8">8분 음표 (♪)</option>
                 <option value="16">16분 음표 (♬)</option>
+                <option value="32">32분 음표</option>
             </select>
+        </div>
+
+        <div class="control-group">
+            <label>엇박 소리 (박자 단위 모드)</label>
+            <div class="radio-group">
+                <label><input type="radio" name="subBeatSound" value="different" checked> 다르게 (기본)</label>
+                <label><input type="radio" name="subBeatSound" value="same"> 정박과 동일하게</label>
+            </div>
         </div>
 
         <div>
@@ -117,7 +136,7 @@
         let currentNote = 0; 
         let subdivision = 4; 
         let bpm = 120;
-        let accentLevels = [2, 1, 1, 1]; // 0: off, 1: normal, 2: strong
+        let accentLevels = [1, 1, 1, 1]; // 0: off, 1: normal, 2: strong
 
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
@@ -129,33 +148,46 @@
         function updateButtonStates() {
             startBtn.textContent = isPlaying ? '재시작' : '시작';
             stopBtn.disabled = !isPlaying;
+            subdivisionSelect.disabled = isPlaying;
+            document.querySelectorAll('input[name="vizMode"]').forEach(r => r.disabled = isPlaying);
+            document.querySelectorAll('input[name="subBeatSound"]').forEach(r => r.disabled = isPlaying);
         }
 
         function scheduleNote(noteIndex, time) {
+            const vizMode = document.querySelector('input[name="vizMode"]:checked').value;
+            const isNoteMode = vizMode === 'note';
             const notesPerBeat = subdivision / 4;
-            const beatIndex = Math.floor(noteIndex / notesPerBeat);
-            const isDownBeat = noteIndex % notesPerBeat === 0;
-            const accent = accentLevels[beatIndex];
+            
+            let barIndex;
+            let shouldVisualize = false;
 
-            let freq = 0;
-
-            if (isDownBeat) {
-                if (accent === 2) freq = 1500.0;      // 강세 (드럼을 뚫고 나오는 높은 음)
-                else if (accent === 1) freq = 1000.0; // 보통 정박
+            if (!isNoteMode) {
+                barIndex = Math.floor(noteIndex / notesPerBeat);
+                shouldVisualize = (noteIndex % notesPerBeat === 0);
             } else {
-                freq = 800.0; // 엇박
+                barIndex = noteIndex;
+                shouldVisualize = true;
+            }
+
+            const diffSubBeat = document.querySelector('input[name="subBeatSound"]:checked').value === 'different';
+            let freq = 0;
+            if (!isNoteMode && !shouldVisualize && diffSubBeat) {
+                freq = 800.0; // 박자 모드에서 바(Bar)가 없는 엇박
+            } else {
+                const accent = accentLevels[barIndex];
+                if (accent === 2) freq = 1500.0;      
+                else if (accent === 1) freq = 1000.0; 
+                else if (accent === 0) freq = 0; // 뮤트(소리 끔)
             }
 
             if (freq > 0) {
                 const osc = audioContext.createOscillator();
-                const gainNode = audioContext.createGain(); // 볼륨 조절기 생성
+                const gainNode = audioContext.createGain(); 
                 
-                osc.type = 'sine'; // 맑고 부드러운 사인파
+                osc.type = 'sine'; 
                 osc.frequency.value = freq;
-
                 osc.connect(audioContext.destination);
                 
-                // 소리가 찢어지지 않도록 볼륨 페이드아웃 적용 (Envelope 처리)
                 gainNode.gain.setValueAtTime(1, time);
                 gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.05); // 0.05초 동안 자연스럽게 작아짐
 
@@ -163,17 +195,32 @@
                 gainNode.connect(audioContext.destination);
 
                 osc.start(time);
-                osc.stop(time + 0.06); // 페이드아웃이 끝난 직후에 완전히 종료
+                osc.stop(time + 0.06); 
             }
 
-            if (isDownBeat) {
-                setTimeout(() => updateVisuals(beatIndex), (time - audioContext.currentTime) * 1000);
+            if (shouldVisualize) {
+                setTimeout(() => updateVisuals(barIndex), (time - audioContext.currentTime) * 1000);
             }
         }
 
         function createBeatBars() {
+            const vizMode = document.querySelector('input[name="vizMode"]:checked').value;
+            const numBars = (vizMode === 'beat') ? 4 : subdivision;
+            
             visualizer.innerHTML = '';
-            for (let i = 0; i < 4; i++) {
+            visualizer.style.gridTemplateColumns = `repeat(${numBars}, 1fr)`;
+            visualizer.style.gap = numBars >= 16 ? '2px' : '10px';
+
+            // 배열 크기 조정 및 기본값 초기화
+            if (accentLevels.length !== numBars) {
+                accentLevels = Array(numBars).fill(0);
+                const step = (vizMode === 'beat') ? 1 : (subdivision / 4);
+                for(let i = 0; i < numBars; i++) {
+                    accentLevels[i] = (i % step === 0) ? 1 : 0;
+                }
+            }
+
+            for (let i = 0; i < numBars; i++) {
                 const barContainer = document.createElement('div');
                 barContainer.className = 'beat-bar';
                 barContainer.dataset.beat = i;
@@ -184,7 +231,21 @@
 
                 const label = document.createElement('div');
                 label.className = 'beat-bar-label';
-                label.textContent = i + 1;
+                label.style.fontSize = numBars >= 16 ? '11px' : '16px';
+                
+                // 라벨 텍스트 로직
+                if (vizMode === 'beat') {
+                    label.textContent = i + 1;
+                } else {
+                    if (numBars <= 4) label.textContent = i + 1;
+                    else if (numBars === 8) label.textContent = i % 2 === 0 ? Math.floor(i/2)+1 : '+';
+                    else if (numBars === 16) {
+                        const sym = ['1','e','+','a','2','e','+','a','3','e','+','a','4','e','+','a'];
+                        label.textContent = sym[i];
+                    } else if (numBars === 32) {
+                        label.textContent = i % 8 === 0 ? Math.floor(i/8)+1 : ''; // 32분음표는 너무 많아 숫자만 표시
+                    }
+                }
                 barContainer.appendChild(label);
 
                 barContainer.addEventListener('click', () => {
@@ -261,6 +322,16 @@
 
         bpmInput.addEventListener('input', (e) => syncBpm(e.target));
         bpmSlider.addEventListener('input', (e) => syncBpm(e.target));
+
+        function handleConfigChange() {
+            subdivision = parseInt(subdivisionSelect.value);
+            createBeatBars();
+        }
+
+        subdivisionSelect.addEventListener('change', handleConfigChange);
+        document.querySelectorAll('input[name="vizMode"]').forEach(radio => {
+            radio.addEventListener('change', handleConfigChange);
+        });
 
         createBeatBars();
         updateButtonStates();
