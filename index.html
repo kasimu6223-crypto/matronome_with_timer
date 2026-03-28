@@ -16,6 +16,19 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
         h1 { margin-top: 0; }
+        .timer-display {
+            font-size: 4em;
+            font-weight: bold;
+            color: #2c3e50;
+            font-variant-numeric: tabular-nums; /* 숫자가 깜빡일 때 너비가 변하지 않도록 고정 */
+            margin: 5px 0 20px 0;
+        }
+        .timer-inputs {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
         .visualizer {
             display: grid;
             gap: 10px;
@@ -115,6 +128,18 @@
 <body>
     <div class="container">
         <h1>메트로놈</h1>
+        
+        <!-- 남은 시간 표시 -->
+        <div id="timerDisplay" class="timer-display">00:00</div>
+
+        <div class="control-group">
+            <label>타이머 설정 (0일 경우 무한 재생)</label>
+            <div class="timer-inputs">
+                <input type="number" id="timerMin" value="0" min="0" max="99"> 분
+                <input type="number" id="timerSec" value="0" min="0" max="59"> 초
+            </div>
+        </div>
+
         <div id="visualizer" class="visualizer"></div>
 
         <div class="control-group">
@@ -170,6 +195,9 @@
         let isPlaying = false;
         let nextNoteTime = 0.0;
         let schedulerTimerID;
+        let timerID = null;
+        let currentTimerSeconds = 0;
+        let totalTimerSeconds = 0;
         
         let currentNote = 0; 
         let subdivision = 4; 
@@ -182,6 +210,9 @@
         const bpmSlider = document.getElementById('bpmSlider');
         const subdivisionSelect = document.getElementById('subdivisionSelect');
         const visualizer = document.getElementById('visualizer');
+        const timerDisplay = document.getElementById('timerDisplay');
+        const timerMin = document.getElementById('timerMin');
+        const timerSec = document.getElementById('timerSec');
 
         function updateButtonStates() {
             startBtn.textContent = isPlaying ? '재시작' : '시작';
@@ -189,6 +220,8 @@
             subdivisionSelect.disabled = isPlaying;
             document.getElementById('vizModeSwitch').disabled = isPlaying;
             document.getElementById('subBeatSoundSwitch').disabled = isPlaying;
+            timerMin.disabled = isPlaying;
+            timerSec.disabled = isPlaying;
         }
 
         function scheduleNote(noteIndex, time) {
@@ -324,13 +357,39 @@
             schedulerTimerID = setTimeout(scheduler, 25.0);
         }
 
+        function playAlarm() {
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            osc.type = 'triangle'; // 전자 알람 소리에 어울리는 파형
+            
+            // 삐- 삐- 삐- 울리는 알람 패턴
+            osc.frequency.setValueAtTime(1000, audioContext.currentTime);
+            osc.frequency.setValueAtTime(1200, audioContext.currentTime + 0.2);
+            osc.frequency.setValueAtTime(1000, audioContext.currentTime + 0.4);
+            osc.frequency.setValueAtTime(1200, audioContext.currentTime + 0.6);
+            
+            gain.gain.setValueAtTime(0.5, audioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1);
+            
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+            osc.start();
+            osc.stop(audioContext.currentTime + 1.2);
+        }
+
+        function updateTimerDisplay() {
+            const m = String(Math.floor(currentTimerSeconds / 60)).padStart(2, '0');
+            const s = String(currentTimerSeconds % 60).padStart(2, '0');
+            timerDisplay.textContent = `${m}:${s}`;
+        }
+
         startBtn.addEventListener('click', () => {
             if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
             if (audioContext.state === 'suspended') audioContext.resume();
 
             if (isPlaying) {
-                // 이미 재생 중일 때 재시작을 누른 경우, 기존 타이머 정리
                 clearTimeout(schedulerTimerID);
+                clearInterval(timerID);
                 visualizer.querySelectorAll('.beat-bar').forEach(bar => bar.classList.remove('active'));
             }
 
@@ -342,14 +401,36 @@
             subdivision = parseInt(subdivisionSelect.value);
             nextNoteTime = audioContext.currentTime + 0.1;
             scheduler();
+
+            // 타이머 로직 시작
+            totalTimerSeconds = (parseInt(timerMin.value) || 0) * 60 + (parseInt(timerSec.value) || 0);
+            if (totalTimerSeconds > 0) {
+                currentTimerSeconds = totalTimerSeconds;
+                updateTimerDisplay();
+                timerID = setInterval(() => {
+                    currentTimerSeconds--;
+                    updateTimerDisplay();
+                    
+                    if (currentTimerSeconds <= 0) {
+                        clearInterval(timerID);
+                        stopBtn.click(); // 정지 버튼을 누른 것과 동일하게 처리
+                        playAlarm();     // 알람 소리 발생
+                    }
+                }, 1000);
+            }
         });
 
         stopBtn.addEventListener('click', () => {
             isPlaying = false;
             updateButtonStates();
             clearTimeout(schedulerTimerID);
+            clearInterval(timerID);
             document.querySelectorAll('.beat-bar').forEach(bar => bar.style.cursor = 'pointer');
             visualizer.querySelectorAll('.beat-bar').forEach(bar => bar.classList.remove('active'));
+
+            // 타이머 멈춤 시, 입력해둔 설정 시간으로 디스플레이 원복
+            currentTimerSeconds = (parseInt(timerMin.value) || 0) * 60 + (parseInt(timerSec.value) || 0);
+            updateTimerDisplay();
         });
 
         function syncBpm(source) {
@@ -360,6 +441,15 @@
 
         bpmInput.addEventListener('input', (e) => syncBpm(e.target));
         bpmSlider.addEventListener('input', (e) => syncBpm(e.target));
+
+        function handleTimerInput() {
+            if (!isPlaying) {
+                currentTimerSeconds = (parseInt(timerMin.value) || 0) * 60 + (parseInt(timerSec.value) || 0);
+                updateTimerDisplay();
+            }
+        }
+        timerMin.addEventListener('input', handleTimerInput);
+        timerSec.addEventListener('input', handleTimerInput);
 
         function handleConfigChange() {
             subdivision = parseInt(subdivisionSelect.value);
