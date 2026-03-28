@@ -441,14 +441,14 @@
 
             const osc = audioContext.createOscillator();
             const gain = audioContext.createGain();
-            osc.type = 'triangle'; // 전자 알람 소리에 어울리는 파형
+            osc.type = 'square'; // 전자 알람 소리에 어울리는 크고 또렷한 파형
             
             // 삐- 삐- 삐- 울리는 알람 패턴
             osc.frequency.setValueAtTime(1000, audioContext.currentTime);
             osc.frequency.setValueAtTime(1200, audioContext.currentTime + 0.15);
             osc.frequency.setValueAtTime(1000, audioContext.currentTime + 0.3);
             
-            gain.gain.setValueAtTime(volume, audioContext.currentTime);
+            gain.gain.setValueAtTime(volume * 1.5, audioContext.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1);
             
             osc.connect(gain);
