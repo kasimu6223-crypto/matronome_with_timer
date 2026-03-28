@@ -74,6 +74,10 @@
         }
         #startBtn { background-color: #27ae60; }
         #stopBtn { background-color: #c0392b; }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -121,6 +125,11 @@
         const bpmSlider = document.getElementById('bpmSlider');
         const subdivisionSelect = document.getElementById('subdivisionSelect');
         const visualizer = document.getElementById('visualizer');
+
+        function updateButtonStates() {
+            startBtn.disabled = isPlaying;
+            stopBtn.disabled = !isPlaying;
+        }
 
         function scheduleNote(noteIndex, time) {
             const notesPerBeat = subdivision / 4;
@@ -199,17 +208,17 @@
             while (nextNoteTime < audioContext.currentTime + 0.1) {
                 scheduleNote(currentNote, nextNoteTime);
                 nextNoteTime += 60.0 / bpm / (subdivision / 4);
-                currentNote = (currentNote + 1) % (subdivision * (4 / (subdivision/4)));
+                currentNote = (currentNote + 1) % subdivision;
             }
             schedulerTimerID = setTimeout(scheduler, 25.0);
         }
 
         startBtn.addEventListener('click', () => {
-            if (isPlaying) return;
             if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
             if (audioContext.state === 'suspended') audioContext.resume();
 
             isPlaying = true;
+            updateButtonStates();
             document.querySelectorAll('.beat-bar').forEach(bar => bar.style.cursor = 'default');
             currentNote = 0;
             bpm = parseInt(bpmInput.value);
@@ -219,8 +228,8 @@
         });
 
         stopBtn.addEventListener('click', () => {
-            if (!isPlaying) return;
             isPlaying = false;
+            updateButtonStates();
             clearTimeout(schedulerTimerID);
             document.querySelectorAll('.beat-bar').forEach(bar => bar.style.cursor = 'pointer');
             visualizer.querySelectorAll('.beat-bar').forEach(bar => bar.classList.remove('active'));
@@ -236,184 +245,7 @@
         bpmSlider.addEventListener('input', (e) => syncBpm(e.target));
 
         createBeatBars();
-    </script>
-</body>
-</html>
-            height: 80px;
-            margin-bottom: 20px;
-            gap: 10px; /* 동그라미 사이 간격 */
-        }
-        .dot {
-            width: 25px;
-            height: 25px;
-            border-radius: 50%;
-            background-color: #e0e0e0; /* 꺼져있을 때 색상 */
-            transition: all 0.05s ease-in-out;
-        }
-        .dot.active {
-            background-color: #27ae60; /* 켜졌을 때 초록색 */
-            transform: scale(1.3); /* 살짝 커지는 효과 */
-            box-shadow: 0 0 10px rgba(39, 174, 96, 0.6); /* 빛나는 효과 */
-        }
-        .control-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input[type="number"], select {
-            width: 100px; padding: 8px; font-size: 16px; border-radius: 5px; border: 1px solid #ccc;
-        }
-        button {
-            padding: 15px 30px; font-size: 20px; margin: 5px; border: none; border-radius: 8px; cursor: pointer; color: white;
-        }
-        #startBtn { background-color: #27ae60; }
-        #stopBtn { background-color: #c0392b; }
-        .radio-group label { display: inline-block; font-weight: normal; margin: 0 10px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>메트로놈</h1>
-        <div id="visualizer" class="visualizer"></div>
-
-        <div class="control-group">
-            <label for="bpmInput">BPM</label>
-            <input type="number" id="bpmInput" value="120" min="30" max="280">
-        </div>
-        
-        <div class="control-group">
-            <label for="subdivisionSelect">음표 단위</label>
-            <select id="subdivisionSelect">
-                <option value="4">4분 음표 (♩)</option>
-                <option value="8">8분 음표 (♪)</option>
-                <option value="16">16분 음표 (♬)</option>
-            </select>
-        </div>
-
-        <div class="control-group">
-            <label>시각화 표시 단위</label>
-            <div class="radio-group">
-                <label><input type="radio" name="vizMode" value="beat" checked> 박자 단위</label>
-                <label><input type="radio" name="vizMode" value="note"> 음표 단위</label>
-            </div>
-        </div>
-
-        <div>
-            <button id="startBtn">시작</button>
-            <button id="stopBtn">정지</button>
-        </div>
-    </div>
-
-    <script>
-        let audioContext;
-        let isPlaying = false;
-        let nextNoteTime = 0.0;
-        let schedulerTimerID;
-        
-        let currentNote = 0; 
-        let subdivision = 4; 
-        let bpm = 120;
-
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const bpmInput = document.getElementById('bpmInput');
-        const subdivisionSelect = document.getElementById('subdivisionSelect');
-        const visualizer = document.getElementById('visualizer');
-        const vizModeRadios = document.querySelectorAll('input[name="vizMode"]');
-
-        function scheduleNote(noteIndex, time) {
-            const osc = audioContext.createOscillator();
-            osc.connect(audioContext.destination);
-
-            if (noteIndex % (16 / subdivision * 4) === 0) { 
-                 osc.frequency.value = 880.0; // 강박
-            } else if (noteIndex % (16 / subdivision) === 0) { 
-                 osc.frequency.value = 440.0; // 정박
-            } else {
-                 osc.frequency.value = 330.0; // 엇박
-            }
-
-            osc.start(time);
-            osc.stop(time + 0.05);
-
-            setTimeout(() => updateVisuals(noteIndex), (time - audioContext.currentTime) * 1000);
-        }
-
-        // 설정에 맞게 동그라미(Dot)들을 생성하는 함수
-        function setupVisualizerDots() {
-            visualizer.innerHTML = '';
-            const vizMode = document.querySelector('input[name="vizMode"]:checked').value;
-            const currentSub = parseInt(subdivisionSelect.value);
-            const dotCount = (vizMode === 'beat') ? 4 : currentSub; // 박자 단위면 4개, 음표 단위면 선택한 음표 수만큼
-            
-            for (let i = 0; i < dotCount; i++) {
-                const dot = document.createElement('div');
-                dot.className = 'dot';
-                visualizer.appendChild(dot);
-            }
-        }
-
-        function updateVisuals(noteIndex) {
-            const vizMode = document.querySelector('input[name="vizMode"]:checked').value;
-            const notesPerBeat = subdivision / 4;
-            const dots = visualizer.querySelectorAll('.dot');
-
-            if (vizMode === 'beat') {
-                if (noteIndex % notesPerBeat === 0) {
-                    const beatIndex = Math.floor(noteIndex / notesPerBeat);
-                    if (dots[beatIndex]) {
-                        dots[beatIndex].classList.add('active');
-                        setTimeout(() => { if (dots[beatIndex]) dots[beatIndex].classList.remove('active'); }, 100);
-                    }
-                }
-            } else {
-                if (dots[noteIndex]) {
-                    dots[noteIndex].classList.add('active');
-                    setTimeout(() => { if (dots[noteIndex]) dots[noteIndex].classList.remove('active'); }, 100); // 100ms 후 불 끄기
-                }
-            }
-        }
-
-        function scheduler() {
-            while (nextNoteTime < audioContext.currentTime + 0.1) {
-                scheduleNote(currentNote, nextNoteTime);
-                nextNoteTime += 60.0 / bpm / (subdivision / 4);
-                currentNote = (currentNote + 1) % subdivision;
-            }
-            schedulerTimerID = setTimeout(scheduler, 25.0);
-        }
-
-        startBtn.addEventListener('click', () => {
-            if (isPlaying) return;
-            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioContext.state === 'suspended') audioContext.resume();
-
-            isPlaying = true;
-            currentNote = 0;
-            bpm = parseInt(bpmInput.value);
-            subdivision = parseInt(subdivisionSelect.value);
-            setupVisualizerDots(); // 시작할 때 UI 다시 맞춤
-            nextNoteTime = audioContext.currentTime + 0.1;
-            scheduler();
-        });
-
-        stopBtn.addEventListener('click', () => {
-            if (!isPlaying) return;
-            isPlaying = false;
-            clearTimeout(schedulerTimerID);
-            visualizer.querySelectorAll('.dot').forEach(dot => dot.classList.remove('active')); // 모든 불 끄기
-        });
-
-        bpmInput.addEventListener('input', (e) => bpm = parseInt(e.target.value));
-
-        // 설정이 바뀔 때마다 동그라미 갯수 실시간 반영 (재생 중이 아닐 때만)
-        subdivisionSelect.addEventListener('change', () => {
-            if (!isPlaying) setupVisualizerDots();
-        });
-        vizModeRadios.forEach(radio => {
-            radio.addEventListener('change', () => {
-                if (!isPlaying) setupVisualizerDots();
-            });
-        });
-
-        setupVisualizerDots(); // 처음 화면 켰을 때 초기 세팅
+        updateButtonStates();
     </script>
 </body>
 </html>
