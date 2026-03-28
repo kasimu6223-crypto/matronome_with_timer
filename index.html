@@ -17,17 +17,243 @@
         }
         h1 { margin-top: 0; }
         .visualizer {
-            font-size: 4em;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            height: 120px;
+            margin-bottom: 25px;
+            align-items: flex-end;
+        }
+        .beat-bar {
+            background-color: #e0e0e0;
+            border-radius: 5px;
+            position: relative;
+            cursor: pointer;
+            height: 100%;
+            display: flex;
+            flex-direction: column-reverse;
+            transition: background-color 0.1s;
+        }
+        .beat-bar.active {
+            background-color: #c8f7dc; /* 활성화 시 배경색 */
+        }
+        .beat-bar-fill {
+            background-color: #27ae60;
+            border-radius: 5px;
+            width: 100%;
+            transition: height 0.2s ease-out;
+        }
+        .beat-bar-fill.accent-0 { height: 0%; }
+        .beat-bar-fill.accent-1 { height: 50%; }
+        .beat-bar-fill.accent-2 { height: 100%; }
+
+        .beat-bar-label {
+            position: absolute;
+            bottom: -25px;
+            width: 100%;
+            text-align: center;
+            color: #555;
             font-weight: bold;
-            color: #ccc;
+        }
+
+        .control-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        .bpm-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        input[type="range"] {
+            flex-grow: 1;
+        }
+        input[type="number"], select {
+            width: 80px; padding: 8px; font-size: 16px; border-radius: 5px; border: 1px solid #ccc;
+        }
+        button {
+            padding: 15px 30px; font-size: 20px; margin: 5px; border: none; border-radius: 8px; cursor: pointer; color: white;
+        }
+        #startBtn { background-color: #27ae60; }
+        #stopBtn { background-color: #c0392b; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>메트로놈</h1>
+        <div id="visualizer" class="visualizer"></div>
+
+        <div class="control-group">
+            <label for="bpmInput">BPM</label>
+            <div class="bpm-controls">
+                <input type="range" id="bpmSlider" value="120" min="30" max="280">
+                <input type="number" id="bpmInput" value="120" min="30" max="280">
+            </div>
+        </div>
+        
+        <div class="control-group">
+            <label for="subdivisionSelect">음표 단위 (소리)</label>
+            <select id="subdivisionSelect">
+                <option value="4">4분 음표 (♩)</option>
+                <option value="8">8분 음표 (♪)</option>
+                <option value="16">16분 음표 (♬)</option>
+            </select>
+        </div>
+
+        <div>
+            <button id="startBtn">시작</button>
+            <button id="stopBtn">정지</button>
+        </div>
+    </div>
+
+    <script>
+        let audioContext;
+        let isPlaying = false;
+        let nextNoteTime = 0.0;
+        let schedulerTimerID;
+        
+        let currentNote = 0; 
+        let subdivision = 4; 
+        let bpm = 120;
+        let accentLevels = [2, 1, 1, 1]; // 0: off, 1: normal, 2: strong
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const bpmInput = document.getElementById('bpmInput');
+        const bpmSlider = document.getElementById('bpmSlider');
+        const subdivisionSelect = document.getElementById('subdivisionSelect');
+        const visualizer = document.getElementById('visualizer');
+
+        function scheduleNote(noteIndex, time) {
+            const notesPerBeat = subdivision / 4;
+            const beatIndex = Math.floor(noteIndex / notesPerBeat);
+            const isDownBeat = noteIndex % notesPerBeat === 0;
+            const accent = accentLevels[beatIndex];
+
+            let freq = 0;
+
+            if (isDownBeat) {
+                if (accent === 2) freq = 880.0;      // 강세
+                else if (accent === 1) freq = 523.25; // 보통
+            } else {
+                freq = 330.0; // 엇박
+            }
+
+            if (freq > 0) {
+                const osc = audioContext.createOscillator();
+                osc.connect(audioContext.destination);
+                osc.frequency.value = freq;
+                osc.start(time);
+                osc.stop(time + 0.05);
+            }
+
+            if (isDownBeat) {
+                setTimeout(() => updateVisuals(beatIndex), (time - audioContext.currentTime) * 1000);
+            }
+        }
+
+        function createBeatBars() {
+            visualizer.innerHTML = '';
+            for (let i = 0; i < 4; i++) {
+                const barContainer = document.createElement('div');
+                barContainer.className = 'beat-bar';
+                barContainer.dataset.beat = i;
+
+                const fill = document.createElement('div');
+                fill.className = 'beat-bar-fill';
+                barContainer.appendChild(fill);
+
+                const label = document.createElement('div');
+                label.className = 'beat-bar-label';
+                label.textContent = i + 1;
+                barContainer.appendChild(label);
+
+                barContainer.addEventListener('click', () => {
+                    if (isPlaying) return; // 재생 중에는 변경 불가
+                    accentLevels[i] = (accentLevels[i] + 2) % 3; // 2->1, 1->0, 0->2
+                    updateAccentUI();
+                });
+                visualizer.appendChild(barContainer);
+            }
+            updateAccentUI();
+        }
+
+        function updateAccentUI() {
+            const fills = visualizer.querySelectorAll('.beat-bar-fill');
+            accentLevels.forEach((level, index) => {
+                if (fills[index]) {
+                    fills[index].className = `beat-bar-fill accent-${level}`;
+                }
+            });
+        }
+
+        function updateVisuals(beatIndex) {
+            const bars = visualizer.querySelectorAll('.beat-bar');
+            if (bars[beatIndex]) {
+                bars[beatIndex].classList.add('active');
+                setTimeout(() => {
+                    if (bars[beatIndex]) bars[beatIndex].classList.remove('active');
+                }, 100);
+            }
+        }
+
+        function scheduler() {
+            while (nextNoteTime < audioContext.currentTime + 0.1) {
+                scheduleNote(currentNote, nextNoteTime);
+                nextNoteTime += 60.0 / bpm / (subdivision / 4);
+                currentNote = (currentNote + 1) % (subdivision * (4 / (subdivision/4)));
+            }
+            schedulerTimerID = setTimeout(scheduler, 25.0);
+        }
+
+        startBtn.addEventListener('click', () => {
+            if (isPlaying) return;
+            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioContext.state === 'suspended') audioContext.resume();
+
+            isPlaying = true;
+            document.querySelectorAll('.beat-bar').forEach(bar => bar.style.cursor = 'default');
+            currentNote = 0;
+            bpm = parseInt(bpmInput.value);
+            subdivision = parseInt(subdivisionSelect.value);
+            nextNoteTime = audioContext.currentTime + 0.1;
+            scheduler();
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (!isPlaying) return;
+            isPlaying = false;
+            clearTimeout(schedulerTimerID);
+            document.querySelectorAll('.beat-bar').forEach(bar => bar.style.cursor = 'pointer');
+            visualizer.querySelectorAll('.beat-bar').forEach(bar => bar.classList.remove('active'));
+        });
+
+        function syncBpm(source) {
+            bpm = parseInt(source.value);
+            bpmInput.value = bpm;
+            bpmSlider.value = bpm;
+        }
+
+        bpmInput.addEventListener('input', (e) => syncBpm(e.target));
+        bpmSlider.addEventListener('input', (e) => syncBpm(e.target));
+
+        createBeatBars();
+    </script>
+</body>
+</html>
             height: 80px;
-            line-height: 80px;
             margin-bottom: 20px;
+            gap: 10px; /* 동그라미 사이 간격 */
+        }
+        .dot {
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            background-color: #e0e0e0; /* 꺼져있을 때 색상 */
             transition: all 0.05s ease-in-out;
         }
-        .visualizer.active {
-            color: #2c3e50;
-            transform: scale(1.1);
+        .dot.active {
+            background-color: #27ae60; /* 켜졌을 때 초록색 */
+            transform: scale(1.3); /* 살짝 커지는 효과 */
+            box-shadow: 0 0 10px rgba(39, 174, 96, 0.6); /* 빛나는 효과 */
         }
         .control-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
@@ -45,7 +271,7 @@
 <body>
     <div class="container">
         <h1>메트로놈</h1>
-        <div id="visualizer" class="visualizer">4/4</div>
+        <div id="visualizer" class="visualizer"></div>
 
         <div class="control-group">
             <label for="bpmInput">BPM</label>
@@ -90,7 +316,7 @@
         const bpmInput = document.getElementById('bpmInput');
         const subdivisionSelect = document.getElementById('subdivisionSelect');
         const visualizer = document.getElementById('visualizer');
-        const noteDisplaySymbols = ['1', 'e', '+', 'a', '2', 'e', '+', 'a', '3', 'e', '+', 'a', '4', 'e', '+', 'a'];
+        const vizModeRadios = document.querySelectorAll('input[name="vizMode"]');
 
         function scheduleNote(noteIndex, time) {
             const osc = audioContext.createOscillator();
@@ -110,20 +336,39 @@
             setTimeout(() => updateVisuals(noteIndex), (time - audioContext.currentTime) * 1000);
         }
 
+        // 설정에 맞게 동그라미(Dot)들을 생성하는 함수
+        function setupVisualizerDots() {
+            visualizer.innerHTML = '';
+            const vizMode = document.querySelector('input[name="vizMode"]:checked').value;
+            const currentSub = parseInt(subdivisionSelect.value);
+            const dotCount = (vizMode === 'beat') ? 4 : currentSub; // 박자 단위면 4개, 음표 단위면 선택한 음표 수만큼
+            
+            for (let i = 0; i < dotCount; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'dot';
+                visualizer.appendChild(dot);
+            }
+        }
+
         function updateVisuals(noteIndex) {
             const vizMode = document.querySelector('input[name="vizMode"]:checked').value;
             const notesPerBeat = subdivision / 4;
-            const currentBeat = Math.floor(noteIndex / notesPerBeat) + 1;
+            const dots = visualizer.querySelectorAll('.dot');
 
             if (vizMode === 'beat') {
-                if (noteIndex % notesPerBeat === 0) visualizer.innerText = currentBeat;
+                if (noteIndex % notesPerBeat === 0) {
+                    const beatIndex = Math.floor(noteIndex / notesPerBeat);
+                    if (dots[beatIndex]) {
+                        dots[beatIndex].classList.add('active');
+                        setTimeout(() => { if (dots[beatIndex]) dots[beatIndex].classList.remove('active'); }, 100);
+                    }
+                }
             } else {
-                const displayIndex = Math.floor(noteIndex * (16 / subdivision));
-                visualizer.innerText = noteDisplaySymbols[displayIndex];
+                if (dots[noteIndex]) {
+                    dots[noteIndex].classList.add('active');
+                    setTimeout(() => { if (dots[noteIndex]) dots[noteIndex].classList.remove('active'); }, 100); // 100ms 후 불 끄기
+                }
             }
-            
-            visualizer.classList.add('active');
-            setTimeout(() => visualizer.classList.remove('active'), 50);
         }
 
         function scheduler() {
@@ -144,6 +389,7 @@
             currentNote = 0;
             bpm = parseInt(bpmInput.value);
             subdivision = parseInt(subdivisionSelect.value);
+            setupVisualizerDots(); // 시작할 때 UI 다시 맞춤
             nextNoteTime = audioContext.currentTime + 0.1;
             scheduler();
         });
@@ -152,11 +398,22 @@
             if (!isPlaying) return;
             isPlaying = false;
             clearTimeout(schedulerTimerID);
-            visualizer.innerText = "4/4";
-            visualizer.classList.remove('active');
+            visualizer.querySelectorAll('.dot').forEach(dot => dot.classList.remove('active')); // 모든 불 끄기
         });
 
         bpmInput.addEventListener('input', (e) => bpm = parseInt(e.target.value));
+
+        // 설정이 바뀔 때마다 동그라미 갯수 실시간 반영 (재생 중이 아닐 때만)
+        subdivisionSelect.addEventListener('change', () => {
+            if (!isPlaying) setupVisualizerDots();
+        });
+        vizModeRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+                if (!isPlaying) setupVisualizerDots();
+            });
+        });
+
+        setupVisualizerDots(); // 처음 화면 켰을 때 초기 세팅
     </script>
 </body>
 </html>
