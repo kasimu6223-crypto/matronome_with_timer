@@ -77,9 +77,39 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
-        .radio-group { display: flex; justify-content: center; gap: 15px; margin-top: 5px; }
-        .radio-group label { display: flex; align-items: center; font-weight: normal; margin-bottom: 0; cursor: pointer; }
-        .radio-group input { margin-right: 8px; margin-top: 0; }
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 5px;
+        }
+        .toggle-label {
+            font-size: 14px;
+            color: #555;
+            font-weight: bold;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 54px;
+            height: 30px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute; cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #ccc; transition: .3s; border-radius: 30px;
+        }
+        .slider:before {
+            position: absolute; content: "";
+            height: 22px; width: 22px; left: 4px; bottom: 4px;
+            background-color: white; transition: .3s; border-radius: 50%;
+        }
+        input:checked + .slider { background-color: #27ae60; }
+        input:focus + .slider { box-shadow: 0 0 1px #27ae60; }
+        input:checked + .slider:before { transform: translateX(24px); }
+        input:disabled + .slider { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -97,9 +127,13 @@
         
         <div class="control-group">
             <label>시각화 표시 단위</label>
-            <div class="radio-group">
-                <label><input type="radio" name="vizMode" value="beat" checked> 박자 단위</label>
-                <label><input type="radio" name="vizMode" value="note"> 음표 단위</label>
+            <div class="toggle-container">
+                <span class="toggle-label">박자 단위</span>
+                <label class="switch">
+                    <input type="checkbox" id="vizModeSwitch">
+                    <span class="slider"></span>
+                </label>
+                <span class="toggle-label">음표 단위</span>
             </div>
         </div>
 
@@ -115,9 +149,13 @@
 
         <div class="control-group">
             <label>엇박 소리 (박자 단위 모드)</label>
-            <div class="radio-group">
-                <label><input type="radio" name="subBeatSound" value="different" checked> 다르게 (기본)</label>
-                <label><input type="radio" name="subBeatSound" value="same"> 정박과 동일하게</label>
+            <div class="toggle-container">
+                <span class="toggle-label">다르게 (기본)</span>
+                <label class="switch">
+                    <input type="checkbox" id="subBeatSoundSwitch">
+                    <span class="slider"></span>
+                </label>
+                <span class="toggle-label">정박과 동일</span>
             </div>
         </div>
 
@@ -149,13 +187,12 @@
             startBtn.textContent = isPlaying ? '재시작' : '시작';
             stopBtn.disabled = !isPlaying;
             subdivisionSelect.disabled = isPlaying;
-            document.querySelectorAll('input[name="vizMode"]').forEach(r => r.disabled = isPlaying);
-            document.querySelectorAll('input[name="subBeatSound"]').forEach(r => r.disabled = isPlaying);
+            document.getElementById('vizModeSwitch').disabled = isPlaying;
+            document.getElementById('subBeatSoundSwitch').disabled = isPlaying;
         }
 
         function scheduleNote(noteIndex, time) {
-            const vizMode = document.querySelector('input[name="vizMode"]:checked').value;
-            const isNoteMode = vizMode === 'note';
+            const isNoteMode = document.getElementById('vizModeSwitch').checked;
             const notesPerBeat = subdivision / 4;
             
             let barIndex;
@@ -169,7 +206,7 @@
                 shouldVisualize = true;
             }
 
-            const diffSubBeat = document.querySelector('input[name="subBeatSound"]:checked').value === 'different';
+            const diffSubBeat = !document.getElementById('subBeatSoundSwitch').checked;
             let freq = 0;
             if (!isNoteMode && !shouldVisualize && diffSubBeat) {
                 freq = 800.0; // 박자 모드에서 바(Bar)가 없는 엇박
@@ -204,7 +241,8 @@
         }
 
         function createBeatBars() {
-            const vizMode = document.querySelector('input[name="vizMode"]:checked').value;
+            const isNoteMode = document.getElementById('vizModeSwitch').checked;
+            const vizMode = isNoteMode ? 'note' : 'beat';
             const numBars = (vizMode === 'beat') ? 4 : subdivision;
             
             visualizer.innerHTML = '';
@@ -329,9 +367,7 @@
         }
 
         subdivisionSelect.addEventListener('change', handleConfigChange);
-        document.querySelectorAll('input[name="vizMode"]').forEach(radio => {
-            radio.addEventListener('change', handleConfigChange);
-        });
+        document.getElementById('vizModeSwitch').addEventListener('change', handleConfigChange);
 
         createBeatBars();
         updateButtonStates();
