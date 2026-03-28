@@ -149,6 +149,27 @@
         .hidden {
             display: none;
         }
+
+        /* 사용 방법 스타일 */
+        .instructions {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            text-align: left;
+            font-size: 14px;
+            color: #555;
+            border: 1px solid #e9ecef;
+        }
+        .instructions h3 {
+            margin-top: 0;
+            font-size: 16px;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .instructions ul { margin: 0; padding-left: 20px; }
+        .instructions li { margin-bottom: 8px; }
+        .instructions li:last-child { margin-bottom: 0; }
     </style>
 </head>
 <body>
@@ -213,6 +234,16 @@
         <div>
             <button id="startBtn">시작</button>
             <button id="stopBtn">정지</button>
+        </div>
+
+        <!-- 사용 방법 안내 영역 -->
+        <div class="instructions">
+            <h3>📖 간단 사용 방법</h3>
+            <ul>
+                <li><strong>타이머:</strong> 연습할 시간을 설정하세요. 0초 설정 시 무한 재생됩니다.</li>
+                <li><strong>강세 조절:</strong> 중앙의 막대(Bar)를 터치하여 각 박자의 강세를 3단계(강, 보통, 뮤트)로 변경할 수 있습니다.</li>
+                <li><strong>디테일 설정:</strong> 하단의 스위치를 통해 라벨 표시 방식과 엇박 소리를 취향에 맞게 커스텀해 보세요.</li>
+            </ul>
         </div>
     </div>
 
