@@ -1,26 +1,162 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>메트로놈 앱 준비중</title>
     <style>
         body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #f4f4f9;
-            font-family: sans-serif;
-        }
-        h1 {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            text-align: center;
+            padding: 20px;
+            background-color: #f0f2f5;
             color: #333;
         }
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        h1 { margin-top: 0; }
+        .visualizer {
+            font-size: 4em;
+            font-weight: bold;
+            color: #ccc;
+            height: 80px;
+            line-height: 80px;
+            margin-bottom: 20px;
+            transition: all 0.05s ease-in-out;
+        }
+        .visualizer.active {
+            color: #2c3e50;
+            transform: scale(1.1);
+        }
+        .control-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="number"], select {
+            width: 100px; padding: 8px; font-size: 16px; border-radius: 5px; border: 1px solid #ccc;
+        }
+        button {
+            padding: 15px 30px; font-size: 20px; margin: 5px; border: none; border-radius: 8px; cursor: pointer; color: white;
+        }
+        #startBtn { background-color: #27ae60; }
+        #stopBtn { background-color: #c0392b; }
+        .radio-group label { display: inline-block; font-weight: normal; margin: 0 10px; }
     </style>
 </head>
 <body>
-    <h1>GitHub Pages 배포 성공! 🎉</h1>
-    <p>여기에 메트로놈 코드가 들어갈 예정입니다.</p>
+    <div class="container">
+        <h1>메트로놈</h1>
+        <div id="visualizer" class="visualizer">4/4</div>
+
+        <div class="control-group">
+            <label for="bpmInput">BPM</label>
+            <input type="number" id="bpmInput" value="120" min="30" max="280">
+        </div>
+        
+        <div class="control-group">
+            <label for="subdivisionSelect">음표 단위</label>
+            <select id="subdivisionSelect">
+                <option value="4">4분 음표 (♩)</option>
+                <option value="8">8분 음표 (♪)</option>
+                <option value="16">16분 음표 (♬)</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>시각화 표시 단위</label>
+            <div class="radio-group">
+                <label><input type="radio" name="vizMode" value="beat" checked> 박자 단위</label>
+                <label><input type="radio" name="vizMode" value="note"> 음표 단위</label>
+            </div>
+        </div>
+
+        <div>
+            <button id="startBtn">시작</button>
+            <button id="stopBtn">정지</button>
+        </div>
+    </div>
+
+    <script>
+        let audioContext;
+        let isPlaying = false;
+        let nextNoteTime = 0.0;
+        let schedulerTimerID;
+        
+        let currentNote = 0; 
+        let subdivision = 4; 
+        let bpm = 120;
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const bpmInput = document.getElementById('bpmInput');
+        const subdivisionSelect = document.getElementById('subdivisionSelect');
+        const visualizer = document.getElementById('visualizer');
+        const noteDisplaySymbols = ['1', 'e', '+', 'a', '2', 'e', '+', 'a', '3', 'e', '+', 'a', '4', 'e', '+', 'a'];
+
+        function scheduleNote(noteIndex, time) {
+            const osc = audioContext.createOscillator();
+            osc.connect(audioContext.destination);
+
+            if (noteIndex % (16 / subdivision * 4) === 0) { 
+                 osc.frequency.value = 880.0; // 강박
+            } else if (noteIndex % (16 / subdivision) === 0) { 
+                 osc.frequency.value = 440.0; // 정박
+            } else {
+                 osc.frequency.value = 330.0; // 엇박
+            }
+
+            osc.start(time);
+            osc.stop(time + 0.05);
+
+            setTimeout(() => updateVisuals(noteIndex), (time - audioContext.currentTime) * 1000);
+        }
+
+        function updateVisuals(noteIndex) {
+            const vizMode = document.querySelector('input[name="vizMode"]:checked').value;
+            const notesPerBeat = subdivision / 4;
+            const currentBeat = Math.floor(noteIndex / notesPerBeat) + 1;
+
+            if (vizMode === 'beat') {
+                if (noteIndex % notesPerBeat === 0) visualizer.innerText = currentBeat;
+            } else {
+                const displayIndex = Math.floor(noteIndex * (16 / subdivision));
+                visualizer.innerText = noteDisplaySymbols[displayIndex];
+            }
+            
+            visualizer.classList.add('active');
+            setTimeout(() => visualizer.classList.remove('active'), 50);
+        }
+
+        function scheduler() {
+            while (nextNoteTime < audioContext.currentTime + 0.1) {
+                scheduleNote(currentNote, nextNoteTime);
+                nextNoteTime += 60.0 / bpm / (subdivision / 4);
+                currentNote = (currentNote + 1) % subdivision;
+            }
+            schedulerTimerID = setTimeout(scheduler, 25.0);
+        }
+
+        startBtn.addEventListener('click', () => {
+            if (isPlaying) return;
+            if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioContext.state === 'suspended') audioContext.resume();
+
+            isPlaying = true;
+            currentNote = 0;
+            bpm = parseInt(bpmInput.value);
+            subdivision = parseInt(subdivisionSelect.value);
+            nextNoteTime = audioContext.currentTime + 0.1;
+            scheduler();
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (!isPlaying) return;
+            isPlaying = false;
+            clearTimeout(schedulerTimerID);
+            visualizer.innerText = "4/4";
+            visualizer.classList.remove('active');
+        });
+
+        bpmInput.addEventListener('input', (e) => bpm = parseInt(e.target.value));
+    </script>
 </body>
 </html>
