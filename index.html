@@ -127,7 +127,7 @@
         const visualizer = document.getElementById('visualizer');
 
         function updateButtonStates() {
-            startBtn.disabled = isPlaying;
+            startBtn.textContent = isPlaying ? '재시작' : '시작';
             stopBtn.disabled = !isPlaying;
         }
 
@@ -140,18 +140,30 @@
             let freq = 0;
 
             if (isDownBeat) {
-                if (accent === 2) freq = 880.0;      // 강세
-                else if (accent === 1) freq = 523.25; // 보통
+                if (accent === 2) freq = 1500.0;      // 강세 (드럼을 뚫고 나오는 높은 음)
+                else if (accent === 1) freq = 1000.0; // 보통 정박
             } else {
-                freq = 330.0; // 엇박
+                freq = 800.0; // 엇박
             }
 
             if (freq > 0) {
                 const osc = audioContext.createOscillator();
-                osc.connect(audioContext.destination);
+                const gainNode = audioContext.createGain(); // 볼륨 조절기 생성
+                
+                osc.type = 'sine'; // 맑고 부드러운 사인파
                 osc.frequency.value = freq;
+
+                osc.connect(audioContext.destination);
+                
+                // 소리가 찢어지지 않도록 볼륨 페이드아웃 적용 (Envelope 처리)
+                gainNode.gain.setValueAtTime(1, time);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.05); // 0.05초 동안 자연스럽게 작아짐
+
+                osc.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
                 osc.start(time);
-                osc.stop(time + 0.05);
+                osc.stop(time + 0.06); // 페이드아웃이 끝난 직후에 완전히 종료
             }
 
             if (isDownBeat) {
@@ -216,6 +228,12 @@
         startBtn.addEventListener('click', () => {
             if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
             if (audioContext.state === 'suspended') audioContext.resume();
+
+            if (isPlaying) {
+                // 이미 재생 중일 때 재시작을 누른 경우, 기존 타이머 정리
+                clearTimeout(schedulerTimerID);
+                visualizer.querySelectorAll('.beat-bar').forEach(bar => bar.classList.remove('active'));
+            }
 
             isPlaying = true;
             updateButtonStates();
